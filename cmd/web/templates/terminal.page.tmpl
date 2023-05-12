@@ -68,6 +68,11 @@
                 </span>
             </div>
          </div>
+
+         <input type="hidden" name="payment_intent" id="payment_intent">
+         <input type="hidden" name="payment_method" id="payment_method">
+         <input type="hidden" name="payment_amount" id="payment_amount">
+         <input type="hidden" name="payment_currency" id="payment_currency">
     </form>
 {{end}}
 
@@ -82,10 +87,28 @@
         const processing = document.getElementById("processing-payment");
         // public key!
         stripe = Stripe("pk_test_51KpxftB79yg7WE5a95akNpSGwDNycxslcEhTcjXsiiRNWqc0NGP5PDodaMlT4L9dC6CqhO9voFYP9frGmmodnzGs00YXHS96JK")
-        
+
         function hidePayButton(){
             payButton.classList.add("d-none");
             processing.classList.remove("d-none");
+        }
+         function showPayButtons(){
+            payButton.classList.remove("d-none");
+            processing.classList.add("d-none");
+        }
+
+        function showCardError(message){
+            cardMessages.classList.remove("d-none");
+            cardMessages.classList.add("alert-danger");
+            cardMessages.classList.remove("alert-success");
+            cardMessages.innerText = message;
+        }
+
+        function showCardSuccess(){
+            cardMessages.classList.remove("d-none");
+            cardMessages.classList.add("alert-success");
+            cardMessages.classList.remove("alert-danger");
+            cardMessages.innerText = "Transaction Successful";
         }
 
         function val(){
@@ -98,6 +121,63 @@
             }
             form.classList.add("was-validated");
             hidePayButton();
+
+            let amountToCharge = String(parseFloat(document.getElementById("amount").value) * 100);
+
+            let payload = {
+                amount: amountToCharge,
+                currency: "usd",
+            }
+
+            const requestOptions = {
+                method: "post",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"               
+                },
+                body: JSON.stringify(payload)
+            }
+
+            fetch("http://localhost:4001/api/payment-intent",requestOptions)
+            .then(resp => resp.text())
+            .then(resp => {
+                let data;
+                try {
+                data = JSON.parse(resp);
+                console.log(data);
+                stripe.confirmCardPayment(data.client_secret, {
+                payment_method: {
+                        card: card,
+                        billing_details : {
+                            name: document.getElementById("cardholder-name").value,
+                            email: document.getElementById("cardholder-email").value
+                        }
+                }
+                }).then(function(result){
+                    if (result.error) {
+                    // card declined
+                    showCardError(result.error.message);
+                    showPayButtons();
+                    } else if (result.paymentIntent) {
+                        if (result.paymentIntent.status === "succeeded") {
+                        // we have charged card
+                        document.getElementById("payment_intent").value = result.paymentIntent.id;
+                        document.getElementById("payment_method").value = result.paymentIntent.payment_method_types[0];
+                        document.getElementById("payment_amount").value = result.paymentIntent.amount;
+                        document.getElementById("payment_currency").value = result.paymentIntent.currency;
+                        processing.classList.add("d-none");
+                        showCardSuccess();
+                        // would submit the form
+                        document.getElementById("charge-form").submit();
+                        }
+                    }
+                })
+                } catch (err) {
+                console.log(err);
+                showCardError("Invalid response from gateway");
+                showPayButtons();
+                }
+            });
         }
 
         (function(){
